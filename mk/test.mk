@@ -87,7 +87,7 @@ TEST_OBJS := $$(patsubst tests/%.c,$$(TEST_BUILD_DIR)/%.o,$$(TEST_SRCS))
 
 # Generate test config header into isolated build directory
 # This avoids conflicts with user's src/iui_config.h from their .config
-$$(TEST_CONFIG_HEADER): | $$(TEST_BUILD_DIR)
+$$(TEST_CONFIG_HEADER): $$(KCONFIG_DIR)/defconfig.py $$(KCONFIG_DIR)/genconfig.py | $$(TEST_BUILD_DIR)
 	@echo "  GEN     $$@ (test configuration)"
 	@KCONFIG_CONFIG=.config.test python3 $$(KCONFIG_DIR)/defconfig.py --kconfig $$(KCONFIG) configs/defconfig
 	@KCONFIG_CONFIG=.config.test python3 $$(KCONFIG_DIR)/genconfig.py --header-path $$@ $$(KCONFIG)

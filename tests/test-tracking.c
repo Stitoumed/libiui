@@ -129,7 +129,7 @@ static void test_slider_stale_state_cleared(void)
     iui_end_frame(ctx);
 
     /* Active slider state should be cleared */
-    ASSERT_EQ(ctx->slider.active_id & 0x7FFFFFFF, 0);
+    ASSERT_EQ(ctx->slider.active_id & IUI_SLIDER_ID_MASK, 0);
 
     iui_update_mouse_buttons(ctx, 0, IUI_MOUSE_LEFT);
     free(buffer);

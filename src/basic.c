@@ -159,6 +159,18 @@ void iui_slider(iui_context *ctx,
     *value = iui_slider_ex(ctx, *value, min_value, max_value, step, &options);
 }
 
+/* Extended slider with customizable appearance and behavior.
+ *
+ * Animation State Encoding:
+ *   ctx->slider.active_id uses a bitmask to distinguish drag vs animation:
+ *   - Bits 0-30: slider_id (masked to 31 bits for consistent comparison)
+ *   - Bit 31 (IUI_SLIDER_ANIM_FLAG): animation flag
+ *     - Set (1): animating to clicked position on track
+ *     - Clear (0): user is actively dragging the thumb
+ *
+ * Both drag and animation store masked IDs to prevent hash collisions
+ * when slider_id naturally has bit 31 set (~50% of hashes).
+ */
 float iui_slider_ex(iui_context *ctx,
                     float value,
                     float min,
@@ -169,9 +181,12 @@ float iui_slider_ex(iui_context *ctx,
     if (!ctx->current_window || max <= min)
         return value;
 
-    /* Generate unique ID for this slider based on layout position */
-    uint32_t slider_id =
-        iui_hash("slider_ex", 9) ^ iui_hash_pos(ctx->layout.x, ctx->layout.y);
+    /* Generate unique ID for this slider based on layout position.
+     * Use iui_slider_masked_id() to ensure consistent 31-bit IDs for tracking
+     * and to handle the zero-ID edge case.
+     */
+    uint32_t slider_id = iui_slider_masked_id(
+        iui_hash("slider_ex", 9) ^ iui_hash_pos(ctx->layout.x, ctx->layout.y));
 
     /* Register this slider for per-frame tracking */
     iui_register_slider(ctx, slider_id);
@@ -242,8 +257,12 @@ float iui_slider_ex(iui_context *ctx,
     float norm_value = (value - min) / (max - min);
     float thumb_x = norm_value * track_rect.width + track_rect.x;
 
-    /* MD3 thumb sizes: idle=20dp, pressed=28dp */
-    bool is_dragging = (ctx->slider.active_id == slider_id);
+    /* MD3 thumb sizes: idle=20dp, pressed=28dp.
+     * slider_id is already masked via iui_slider_masked_id().
+     * Drag check: ID match in lower 31 bits AND animation flag clear. */
+    bool is_dragging =
+        ((ctx->slider.active_id & IUI_SLIDER_ID_MASK) == slider_id) &&
+        !(ctx->slider.active_id & IUI_SLIDER_ANIM_FLAG);
     float thumb_size =
               is_dragging ? IUI_SLIDER_THUMB_PRESSED : IUI_SLIDER_THUMB_IDLE,
           half_size = thumb_size * .5f;
@@ -284,7 +303,7 @@ float iui_slider_ex(iui_context *ctx,
 
     if (!disabled) {
         if (thumb_pressed && !is_dragging) {
-            /* Start dragging */
+            /* Start dragging: store ID without animation flag */
             ctx->slider.active_id = slider_id;
             ctx->slider.drag_offset = ctx->mouse_pos.x - thumb_x;
             is_dragging = true;
@@ -295,13 +314,13 @@ float iui_slider_ex(iui_context *ctx,
                 clamp_float(track_rect.x, track_rect.x + track_rect.width,
                             ctx->mouse_pos.x);
             ctx->slider.anim_t = 0.f;
-            /* Mask off high bit to avoid collision, then set animation flag */
-            ctx->slider.active_id = (slider_id & 0x7FFFFFFF) | 0x80000000;
+            /* Store ID with animation flag set */
+            ctx->slider.active_id = slider_id | IUI_SLIDER_ANIM_FLAG;
         }
 
-        /* Update animation (mask slider_id for consistent comparison) */
-        if ((ctx->slider.active_id & 0x7FFFFFFF) == (slider_id & 0x7FFFFFFF) &&
-            (ctx->slider.active_id & 0x80000000)) {
+        /* Update animation: check ID match AND animation flag set */
+        if ((ctx->slider.active_id & IUI_SLIDER_ID_MASK) == slider_id &&
+            (ctx->slider.active_id & IUI_SLIDER_ANIM_FLAG)) {
             ctx->slider.anim_t += ctx->delta_time / IUI_DURATION_SHORT_4;
             if (ctx->slider.anim_t >= 1.f) {
                 ctx->slider.anim_t = 1.f;
@@ -426,8 +445,19 @@ bool iui_button(iui_context *ctx,
     return iui_button_styled(ctx, label, alignment, IUI_BUTTON_TONAL);
 }
 
-/* Styled buttons and typography */
-
+/* MD3 styled button with configurable appearance.
+ *
+ * Button Layout:
+ *   1. Compute button rect based on mode (grid vs flow layout)
+ *   2. Apply MD3 dimensions: 40dp height, pill-shaped corners
+ *   3. Register for focus navigation with unique widget ID
+ *   4. Expand touch target to 48dp minimum for accessibility
+ *   5. Apply style-specific colors (filled/tonal/outlined/text)
+ *   6. Draw state layer overlay for hover/focus/press feedback
+ *   7. Render centered label text
+ *
+ * Returns true if button was clicked this frame.
+ */
 bool iui_button_styled(iui_context *ctx,
                        const char *label,
                        iui_text_alignment_t alignment,
@@ -486,8 +516,7 @@ bool iui_button_styled(iui_context *ctx,
      * Combine label hash with layout position to avoid ID collision
      * when multiple buttons share the same label.
      */
-    uint32_t widget_id =
-        iui_hash_str(label) ^ iui_hash_pos(button_rect.x, button_rect.y);
+    uint32_t widget_id = iui_widget_id(label, button_rect);
     iui_register_focusable(ctx, widget_id, button_rect, corner);
     bool is_focused = iui_widget_is_focused(ctx, widget_id);
 

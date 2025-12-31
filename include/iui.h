@@ -1632,7 +1632,10 @@ int iui_tabs_secondary(iui_context *ctx,
                        int count,
                        const char **labels);
 
-/* MD3 Typography functions */
+/* MD3 Typography functions - headline, title, body, label variants.
+ * All share the same signature: (ctx, alignment, format_string, ...)
+ * Explicit declarations for IDE go-to-definition and grep support.
+ */
 void iui_text_headline_small(iui_context *ctx,
                              iui_text_alignment_t alignment,
                              const char *string,

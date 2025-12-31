@@ -1150,8 +1150,7 @@ bool iui_switch(iui_context *ctx,
     /* Register as focusable widget for keyboard navigation.
      * Combine label hash with position to avoid ID collision. */
     float corner = switch_track_height * 0.5f; /* Full round corners */
-    uint32_t widget_id =
-        iui_hash_str(label) ^ iui_hash_pos(track_rect.x, track_rect.y);
+    uint32_t widget_id = iui_widget_id(label, track_rect);
     iui_register_focusable(ctx, widget_id, track_rect, corner);
     bool is_focused = iui_widget_is_focused(ctx, widget_id);
 
@@ -1303,8 +1302,7 @@ bool iui_checkbox(iui_context *ctx, const char *label, bool *checked)
     /* Register as focusable widget for keyboard navigation.
      * Combine label hash with position to avoid ID collision.
      */
-    uint32_t widget_id =
-        iui_hash_str(label) ^ iui_hash_pos(box_rect.x, box_rect.y);
+    uint32_t widget_id = iui_widget_id(label, box_rect);
     iui_register_focusable(ctx, widget_id, box_rect, corner);
     bool is_focused = iui_widget_is_focused(ctx, widget_id);
 
@@ -1387,8 +1385,7 @@ bool iui_radio(iui_context *ctx,
 
     /* Register as focusable widget for keyboard navigation.
      * Combine label hash with position to avoid ID collision. */
-    uint32_t widget_id =
-        iui_hash_str(label) ^ iui_hash_pos(circle_rect.x, circle_rect.y);
+    uint32_t widget_id = iui_widget_id(label, circle_rect);
     iui_register_focusable(ctx, widget_id, circle_rect, corner);
     bool is_focused = iui_widget_is_focused(ctx, widget_id);
 

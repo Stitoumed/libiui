@@ -53,6 +53,28 @@
 #define IUI_MAX_TRACKED_SLIDERS 32 /* max sliders per frame */
 #endif
 
+/* Slider state encoding constants (shared by basic.c and core.c).
+ * Bit 31 distinguishes drag (0) from animation (1) states.
+ * Bits 0-30 store the masked slider_id for identity comparison.
+ *
+ * These constants MUST be used consistently for:
+ *   - iui_register_slider: store masked ID
+ *   - iui_slider_is_registered: compare masked IDs
+ *   - iui_field_tracking_frame_end: extract and compare masked IDs
+ */
+#define IUI_SLIDER_ANIM_FLAG 0x80000000u
+#define IUI_SLIDER_ID_MASK 0x7FFFFFFFu
+
+/* Mask slider ID to 31 bits, handling zero-ID edge case.
+ * If hash is 0 or 0x80000000, masked result would be 0 (treated as "no
+ * slider"). We return 1 in that case to ensure valid IDs are always non-zero.
+ */
+static inline uint32_t iui_slider_masked_id(uint32_t slider_id)
+{
+    uint32_t masked = slider_id & IUI_SLIDER_ID_MASK;
+    return masked ? masked : 1u;
+}
+
 /* Font rendering constants
  * Vector font glyph coords are in 1/64 units relative to font_height.
  * IUI_FONT_UNITS_PER_EM defines this scale factor.
@@ -586,6 +608,29 @@ static inline uint32_t iui_hash_pos(float x, float y)
     float cx = (x > max_coord) ? max_coord : ((x < 0.f) ? 0.f : x);
     float cy = (y > max_coord) ? max_coord : ((y < 0.f) ? 0.f : y);
     return (uint32_t) (cx * 1000.f) ^ (uint32_t) (cy * 1000.f);
+}
+
+/* Generate unique widget ID from label string and bounding rect.
+ * Combines label hash with position for stable per-instance identity.
+ *
+ * Design Rationale:
+ *   Position is intentionally included to allow duplicate labels in different
+ *   locations (e.g., multiple "OK" buttons in a dialog row). This is a common
+ *   immediate-mode UI pattern where the same label appears multiple times.
+ *
+ * Trade-off:
+ *   If widgets move (e.g., list reordering), their IDs change and active state
+ *   (focus, press, drag) is lost. For dynamic lists, use iui_push_id()/pop_id()
+ *   with a stable index instead of relying on position.
+ *
+ * Alternative for dynamic content:
+ *   iui_push_id(ctx, item_index);
+ *   iui_button(ctx, "Delete", ...);  // ID based on stack, not position
+ *   iui_pop_id(ctx);
+ */
+static inline uint32_t iui_widget_id(const char *label, iui_rect_t rect)
+{
+    return iui_hash_str(label) ^ iui_hash_pos(rect.x, rect.y);
 }
 
 /* Color blending - clamp t to [0,1] to prevent integer overflow */

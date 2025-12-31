@@ -683,6 +683,24 @@ bool iui_config_is_valid(const iui_config_t *config)
     return true;
 }
 
+/* Initialize UI context from configuration.
+ *
+ * Subsystem Initialization Order:
+ *   1. Core state: input, font metrics, padding, theme
+ *   2. Clip stack: scissor region management
+ *   3. Modal system: overlay blocking and z-order
+ *   4. Input layer: double-buffered blocking regions
+ *   5. Focus system: keyboard navigation and trapping
+ *   6. Input capture: drag operation ownership
+ *   7. IME state: international text composition
+ *   8. Clipboard: copy/paste callbacks
+ *   9. Scroll state: container scroll tracking
+ *  10. Token systems: typography, shape, spacing
+ *  11. Vector font: pen width and metrics
+ *  12. Performance: batching, dirty rects, text cache
+ *
+ * Returns NULL if config validation fails.
+ */
 iui_context *iui_init(const iui_config_t *config)
 {
     if (!iui_config_is_valid(config))
@@ -1659,9 +1677,10 @@ void iui_field_tracking_frame_end(iui_context *ctx)
         ctx->focused_edit = NULL;
 
     /* Clear slider state if the active slider was not rendered this frame.
-     * Mask off animation flag bit for consistent comparison.
+     * Use IUI_SLIDER_ID_MASK to extract the 31-bit slider ID (ignoring
+     * the animation flag in bit 31) for comparison against tracked sliders.
      */
-    uint32_t active_slider = ctx->slider.active_id & 0x7FFFFFFF;
+    uint32_t active_slider = ctx->slider.active_id & IUI_SLIDER_ID_MASK;
     if (active_slider != 0 && !iui_slider_is_registered(ctx, active_slider)) {
         ctx->slider.active_id = 0;
         ctx->slider.drag_offset = 0.f;

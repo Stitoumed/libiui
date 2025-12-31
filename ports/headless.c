@@ -18,6 +18,9 @@
  * Build: No external dependencies required
  */
 
+/* Enable POSIX features (clock_gettime, ftruncate, struct timespec) */
+#define _POSIX_C_SOURCE 200809L
+
 #include "headless.h"
 #include <math.h>
 #include <stdio.h>

@@ -39,21 +39,21 @@ ifeq ($(CONFIG_PORT_WASM),y)
     endif
 endif
 
-# Set defaults before applying CROSS_COMPILE
-CC      ?= cc
-AR      ?= ar
-RANLIB  ?= ranlib
-STRIP   ?= strip
-
-# Apply cross-compile prefix only if CC wasn't explicitly set
-# (avoids clobbering emcc or user-specified compilers like "ccache clang")
-ifneq ($(CROSS_COMPILE),)
-    ifeq ($(origin CC),default)
-        CC      := $(CROSS_COMPILE)$(CC)
-        AR      := $(CROSS_COMPILE)$(AR)
-        RANLIB  := $(CROSS_COMPILE)$(RANLIB)
-        STRIP   := $(CROSS_COMPILE)$(STRIP)
-    endif
+# Set defaults and apply CROSS_COMPILE prefix if not user-specified.
+# Use ifeq/endif instead of ?= because --no-builtin-variables (set in common.mk)
+# affects recipe execution but not parsing. With ?=, the builtin CC=cc is seen
+# during parsing (so ?= does nothing), but at runtime the builtin is gone.
+ifeq ($(origin CC),default)
+    CC := $(CROSS_COMPILE)cc
+endif
+ifeq ($(origin AR),default)
+    AR := $(CROSS_COMPILE)ar
+endif
+ifeq ($(origin RANLIB),default)
+    RANLIB := $(CROSS_COMPILE)ranlib
+endif
+ifeq ($(origin STRIP),default)
+    STRIP := $(CROSS_COMPILE)strip
 endif
 
 # Host toolchain (for build-time tools)

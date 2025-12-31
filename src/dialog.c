@@ -309,8 +309,19 @@ bool iui_fullscreen_dialog_begin(iui_context *ctx,
                                  float screen_width,
                                  float screen_height)
 {
-    if (!ctx || !dialog || !dialog->is_open)
+    if (!ctx || !dialog)
         return false;
+
+    /* If dialog was closed externally, clean up the orphaned modal state to
+     * prevent blocking other modals.
+     */
+    if (!dialog->is_open) {
+        if (ctx->modal.active &&
+            ctx->modal.id == iui_hash_str("fullscreen_dialog_modal")) {
+            iui_close_modal(ctx);
+        }
+        return false;
+    }
 
     /* Note: frame counter is incremented in iui_fullscreen_dialog_end() AFTER
      * all click protection checks, ensuring the first frame after opening

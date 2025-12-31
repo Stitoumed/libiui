@@ -264,8 +264,19 @@ bool iui_search_view_begin(iui_context *ctx,
                            float screen_height,
                            const char *placeholder)
 {
-    if (!ctx || !search || !search->is_open)
+    if (!ctx || !search)
         return false;
+
+    /* If search view was closed externally (e.g., via suggestion click), clean
+     * up the orphaned modal state to prevent blocking other modals.
+     */
+    if (!search->is_open) {
+        if (ctx->modal.active &&
+            ctx->modal.id == iui_hash_str("search_view_modal")) {
+            iui_close_modal(ctx);
+        }
+        return false;
+    }
 
     /* Note: frame counter is incremented in iui_search_view_end() AFTER
      * all click protection checks, ensuring the first frame after opening

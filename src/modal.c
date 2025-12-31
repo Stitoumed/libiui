@@ -17,15 +17,16 @@ void iui_begin_modal(iui_context *ctx, const char *id)
     uint32_t modal_id = iui_hash_str(id);
 
     if (ctx->modal.active) {
-        /* Modal already active. Allow re-entering the same modal, but block a
-         * different modal.
-         */
+        /* Modal already active. Allow re-entering the same modal. */
         if (ctx->modal.id == modal_id) {
             ctx->modal.rendering = true; /* Re-enable for this frame */
             return;
         }
-        /* Different modal - guard against nested modals */
-        return;
+        /* Different modal trying to open - the previous modal's component is
+         * no longer being rendered (orphaned state). Close it first to allow
+         * the new modal to open properly.
+         */
+        iui_close_modal(ctx);
     }
 
     /* First time opening this modal */

@@ -18,13 +18,12 @@ and complete renderer abstraction (four callbacks—the library never touches gr
 The result is predictable memory usage, deterministic performance, and trivial porting.
 
 ## Full MD3 Compliance with Configurable Features
-
 libiui implements the complete Material Design 3 specification, not an approximation.
 Every dimension, color token, state layer opacity,
 and motion curve follows the official guidelines published at [m3.material.io](https://m3.material.io/).
 The test suite validates 349 cases against the reference implementation in [material-components-android](https://github.com/material-components/material-components-android).
 
-For embedded systems where every byte counts, libiui uses Kconfig to let you include only what you need.
+For embedded systems where every byte counts, libiui uses [Kconfig](https://github.com/sysprog21/Kconfiglib) to let you include only what you need.
 Disable animations, accessibility features, or vector drawing (lines, circles, arcs) to shrink the footprint.
 Enable them when targeting desktop or web where resources are plentiful.
 The same codebase scales from a microcontroller to a full-featured desktop application.
@@ -41,7 +40,6 @@ The same codebase scales from a microcontroller to a full-featured desktop appli
 | Vector graphics | Lines, circles, arcs for custom drawing | `CONFIG_FEATURE_VECTOR` |
 
 ## Use Cases
-
 Embedded systems: Runs on microcontrollers with limited RAM.
 The application controls all memory through a user-provided buffer.
 Kconfig lets you disable features like animation, accessibility, or vector graphics to fit tighter constraints.
@@ -57,7 +55,6 @@ Kiosk and industrial HMI: Deterministic memory usage and minimal footprint suit 
 The immediate-mode architecture guarantees consistent frame times.
 
 ## Platform Support
-
 libiui runs anywhere C runs.
 The callback-based renderer abstracts away platform specifics:
 
@@ -72,7 +69,6 @@ A single codebase produces native desktop applications, browser-based tools,
 and embedded firmware—all with identical MD3 visuals and behavior.
 
 ## Design
-
 Immediate-mode architecture: call `iui_button()`, get a boolean, done.
 No widget objects, no tree traversal, no state synchronization.
 The widget exists only for the duration of the function call.
@@ -82,7 +78,6 @@ Button height 40dp, touch targets 48dp, state layers at exactly 8%/12%/12%/16%/3
 The test suite verifies these values against the official specification.
 
 ## Quick Start
-
 ```shell
 make                 # Build library and demo
 make check           # Run 349 API tests
@@ -90,8 +85,7 @@ make check           # Run 349 API tests
 ```
 
 ## Configuration
-
-libiui uses Kconfig for build-time feature selection.
+libiui uses [Kconfig](https://github.com/sysprog21/Kconfiglib) for build-time feature selection.
 This allows embedded developers to include only the features they need, reducing code size and memory usage.
 
 ```shell
@@ -120,7 +114,6 @@ A minimal embedded configuration disables optional features, yielding a smaller 
 Use `make config` to customize for your target platform.
 
 ## Combining Layout and Components
-
 libiui combines flexible layout with MD3 components in a single immediate-mode API:
 
 ```c
@@ -204,7 +197,6 @@ iui_grid_end(ctx);
 ```
 
 ## Vector Graphics
-
 When `CONFIG_FEATURE_VECTOR` is enabled, libiui provides primitives for custom drawing:
 
 ```c
@@ -229,24 +221,6 @@ iui_update_key(ctx, keycode);
 iui_update_char(ctx, codepoint);
 ```
 
-## Architecture
-
-```
-include/iui.h        Public API (227 functions)
-src/                 20 modules, ~12K lines
-  core.c             Init, color, animation, focus, WCAG
-  layout.c           Frame, window, flex, grid
-  draw.c             Primitives, shadows, clipping, vector graphics
-  basic.c            Button, slider, divider, segmented
-  input.c            TextField, checkbox, radio, switch
-  container.c        Card, progress, snackbar, scroll
-  ...
-ports/
-  port.h             Backend abstraction interface
-  sdl2.c             SDL2 desktop backend (Linux/macOS/Windows)
-  wasm.c             WebAssembly backend (Emscripten)
-```
-
 ## Testing
 
 ```shell
@@ -256,6 +230,5 @@ python3 scripts/headless-test.py     # Automated UI tests
 ```
 
 ## License
-
 libiui is available under a permissive MIT-style license.
 Use of this source code is governed by a MIT license that can be found in the [LICENSE](LICENSE) file.

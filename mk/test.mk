@@ -8,7 +8,7 @@
 # This ensures 'make check' tests the complete API surface
 # ============================================================================
 
-ifneq ($(filter check libiui_test,$(MAKECMDGOALS)),)
+ifneq ($(filter check check-unit check-headless libiui_test,$(MAKECMDGOALS)),)
     # Force all modules enabled for comprehensive testing
     CONFIG_MODULE_BASIC := y
     CONFIG_MODULE_INPUT := y

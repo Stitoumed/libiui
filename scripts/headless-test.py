@@ -1496,12 +1496,16 @@ def main():
     # Run MD3 runtime validation (checks actual rendered dimensions)
     md3_runtime_passed, md3_runtime_info = run_md3_runtime_tests(args.verbose)
     tracked = md3_runtime_info.get("tracked", 0)
+    # Show actual error message if present, otherwise show violations count
+    md3_runtime_error = None
+    if not md3_runtime_passed:
+        md3_runtime_error = md3_runtime_info.get(
+            "error", f"{md3_runtime_info.get('violations', 0)} violations"
+        )
     print_result(
         f"MD3 Runtime Validation ({tracked} widgets)",
         md3_runtime_passed,
-        f"{md3_runtime_info.get('violations', 0)} violations"
-        if not md3_runtime_passed
-        else None,
+        md3_runtime_error,
     )
     results.append(("md3-runtime", md3_runtime_passed, md3_runtime_info))
 

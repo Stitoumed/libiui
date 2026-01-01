@@ -1,0 +1,226 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  detect-code-related-file-changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      has_code_related_changes: ${{ steps.set_has_code_related_changes.outputs.has_code_related_changes }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v6
+      - name: Test changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v47
+        with:
+          files: |
+              .ci/**
+              .github/**
+              configs/**
+              include/**
+              mk/**
+              ports/**
+              scripts/**
+              src/**
+              tests/**
+              .clang-format
+              Makefile
+      - name: Set has_code_related_changes
+        id: set_has_code_related_changes
+        run: |
+          if [[ ${{ steps.changed-files.outputs.any_changed }} == true ]]; then
+            echo "has_code_related_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_code_related_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+  coding-style:
+    needs: [detect-code-related-file-changes]
+    if: needs.detect-code-related-file-changes.outputs.has_code_related_changes == 'true'
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install formatting tools
+        run: |
+          source .ci/common.sh
+
+          # Install base tools
+          sudo apt-get update -q=2
+          sudo apt-get install -q=2 --no-install-recommends shfmt python3-pip gnupg ca-certificates
+
+          # Install clang-format-20 from LLVM repository with proper keyring
+          LLVM_KEYRING=/usr/share/keyrings/llvm-archive-keyring.gpg
+          download_to_stdout https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor -o "$LLVM_KEYRING"
+          CODENAME=$(lsb_release -cs)
+          echo "deb [signed-by=${LLVM_KEYRING}] https://apt.llvm.org/${CODENAME}/ llvm-toolchain-${CODENAME}-20 main" | sudo tee /etc/apt/sources.list.d/llvm-20.list
+          sudo apt-get update -q=2
+          sudo apt-get install -q=2 --no-install-recommends clang-format-20
+
+          # Install Python formatter
+          pip3 install --break-system-packages black==25.1.0
+      - name: Check newline at end of files
+        run: .ci/check-newline.sh
+      - name: Check code formatting
+        run: .ci/check-format.sh
+
+  unit-tests:
+    needs: [detect-code-related-file-changes]
+    if: needs.detect-code-related-file-changes.outputs.has_code_related_changes == 'true'
+    timeout-minutes: 30
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q=2
+          sudo apt-get install -q=2 --no-install-recommends libsdl2-dev python3
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install sdl2 python3
+
+      - name: Set parallel jobs variable
+        run: |
+          source .ci/common.sh
+          echo "PARALLEL=$PARALLEL" >> "$GITHUB_ENV"
+
+      - name: Configure and build
+        run: |
+          make defconfig
+          make $PARALLEL
+
+      - name: Run unit tests
+        run: make check
+
+  headless-tests:
+    needs: [detect-code-related-file-changes, unit-tests]
+    if: needs.detect-code-related-file-changes.outputs.has_code_related_changes == 'true'
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q=2
+          sudo apt-get install -q=2 --no-install-recommends python3
+
+      - name: Set parallel jobs variable
+        run: |
+          source .ci/common.sh
+          echo "PARALLEL=$PARALLEL" >> "$GITHUB_ENV"
+
+      - name: Configure and run headless tests
+        run: |
+          # Generate .config file (required by Makefile)
+          make defconfig
+          # Uses test library built with -DIUI_MD3_RUNTIME_VALIDATION
+          make check-headless $PARALLEL
+
+      - name: Save screenshots on failure
+        if: failure()
+        run: python3 scripts/headless-test.py --lib .build/test/libiui.a -s
+        continue-on-error: true
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-screenshots
+          path: build/*.png
+          retention-days: 7
+
+  sanitizers:
+    needs: [detect-code-related-file-changes, unit-tests]
+    if: needs.detect-code-related-file-changes.outputs.has_code_related_changes == 'true'
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q=2
+          sudo apt-get install -q=2 --no-install-recommends libsdl2-dev python3
+
+      - name: Set parallel jobs variable
+        run: |
+          source .ci/common.sh
+          echo "PARALLEL=$PARALLEL" >> "$GITHUB_ENV"
+
+      - name: Configure and build with ASan
+        run: |
+          make defconfig
+          make check SANITIZERS=1
+
+  build-matrix:
+    needs: [detect-code-related-file-changes]
+    if: needs.detect-code-related-file-changes.outputs.has_code_related_changes == 'true'
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - config: "minimal"
+            modules: ""
+          - config: "basic"
+            modules: "CONFIG_MODULE_BASIC=y"
+          - config: "full"
+            modules: "CONFIG_MODULE_BASIC=y CONFIG_MODULE_INPUT=y CONFIG_MODULE_CONTAINER=y"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q=2
+          sudo apt-get install -q=2 --no-install-recommends libsdl2-dev python3
+
+      - name: Set parallel jobs variable
+        run: |
+          source .ci/common.sh
+          echo "PARALLEL=$PARALLEL" >> "$GITHUB_ENV"
+
+      - name: Configure ${{ matrix.config }} build
+        run: |
+          make defconfig
+          # Apply module configuration
+          for mod in ${{ matrix.modules }}; do
+            echo "$mod" >> .config
+          done
+
+      - name: Build library
+        run: make libiui.a $PARALLEL
+
+      - name: Check binary size
+        run: |
+          size libiui.a || true
+          ls -lh libiui.a

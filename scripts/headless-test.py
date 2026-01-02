@@ -35,6 +35,23 @@ BUILD_DIR = PROJECT_ROOT / "build"
 GOLDEN_DIR = PROJECT_ROOT / "tests" / "golden"
 LIB_PATH = PROJECT_ROOT / "libiui.a"  # Default, can be overridden via --lib
 
+
+def get_sanitizer_flags():
+    """Read .config and return sanitizer flags if enabled."""
+    config_path = PROJECT_ROOT / ".config"
+    if not config_path.exists():
+        return []
+    try:
+        content = config_path.read_text()
+        if "CONFIG_SANITIZERS=y" in content:
+            return ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
+    except (IOError, OSError):
+        pass
+    return []
+
+
+SANITIZER_FLAGS = get_sanitizer_flags()
+
 # =============================================================================
 # Shared Memory Constants (must match headless-shm.h)
 # =============================================================================
@@ -555,8 +572,10 @@ def run_test(name, screenshot=False, verbose=False):
                 f"-I{PROJECT_ROOT}/include",
                 f"-I{PROJECT_ROOT}/src",
                 f"-I{PROJECT_ROOT}",
+                *SANITIZER_FLAGS,
                 str(LIB_PATH),
                 "-lm",
+                *SANITIZER_FLAGS,
             ],
             check=True,
             capture_output=True,
@@ -718,8 +737,10 @@ def run_md3_tests(verbose=False):
                 f"-I{PROJECT_ROOT}/include",
                 f"-I{PROJECT_ROOT}/src",
                 f"-I{PROJECT_ROOT}",
+                *SANITIZER_FLAGS,
                 str(LIB_PATH),
                 "-lm",
+                *SANITIZER_FLAGS,
             ],
             check=True,
             capture_output=True,
@@ -904,8 +925,10 @@ def run_md3_runtime_tests(verbose=False):
                 f"-I{test_build_dir}",  # For iui_config.h from test build
                 f"-I{PROJECT_ROOT}/src",
                 f"-I{PROJECT_ROOT}",
+                *SANITIZER_FLAGS,
                 str(LIB_PATH),
                 "-lm",
+                *SANITIZER_FLAGS,
             ],
             check=True,
             capture_output=True,
@@ -1266,8 +1289,10 @@ int main(void) {
                 f"-I{PROJECT_ROOT}",
                 f"-I{PROJECT_ROOT}/include",
                 f"-I{PROJECT_ROOT}/src",
+                *SANITIZER_FLAGS,
                 str(LIB_PATH),
                 "-lm",
+                *SANITIZER_FLAGS,
             ],
             check=True,
             capture_output=True,

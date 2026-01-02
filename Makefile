@@ -272,9 +272,14 @@ distclean: clean
 wasm-install:
 	@if [ "$(CC_IS_EMCC)" = "1" ]; then \
 		echo "Installing WebAssembly files to assets/web/..."; \
+		if [ ! -f libiui_example ] || [ ! -f libiui_example.wasm ]; then \
+			echo "Error: WASM build artifacts not found"; \
+			echo "Expected: libiui_example and libiui_example.wasm"; \
+			exit 1; \
+		fi; \
 		mkdir -p assets/web; \
-		cp -f libiui_example assets/web/libiui_example.js 2>/dev/null || true; \
-		cp -f libiui_example.wasm assets/web/ 2>/dev/null || true; \
+		cp -f libiui_example assets/web/libiui_example.js; \
+		cp -f libiui_example.wasm assets/web/; \
 		echo ""; \
 		echo "WebAssembly build installed to assets/web/"; \
 		echo "To test, run:"; \
@@ -285,8 +290,10 @@ wasm-install:
 		echo "Build with: make"; \
 	fi
 
-# Override all target to add post-build hook for Emscripten
+# Add wasm-install as post-build step for Emscripten
+# wasm-install depends on the actual build targets to avoid race conditions
 ifeq ($(CC_IS_EMCC), 1)
+wasm-install: $(target-y)
 all: wasm-install
 endif
 

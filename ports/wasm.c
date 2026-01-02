@@ -171,12 +171,8 @@ static void wasm_path_stroke(float width, uint32_t color, void *user)
         return;
     }
 
-    /* Draw path segments using rasterizer */
-    for (int i = 0; i < ctx->path.count - 1; i++) {
-        iui_raster_line(&ctx->raster, ctx->path.points_x[i],
-                        ctx->path.points_y[i], ctx->path.points_x[i + 1],
-                        ctx->path.points_y[i + 1], width, color);
-    }
+    /* Use SDL2-compatible path stroke with round caps and consistent AA */
+    iui_raster_path_stroke(&ctx->raster, &ctx->path, width, color);
 
     iui_path_reset(&ctx->path);
 }

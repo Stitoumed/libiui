@@ -116,9 +116,9 @@ struct iui_port_ctx {
 #define get_blue(c) iui_color_blue(c)
 #define make_color(r, g, b, a) iui_make_color(r, g, b, a)
 
-/* NOTE: Drawing primitives (fill_rounded_rect, draw_line_impl, fill_circle,
- * stroke_circle, draw_arc_impl) have been consolidated into port-sw.h as shared
- * inline functions: iui_raster_rounded_rect, iui_raster_line_bresenham,
+/* NOTE: Drawing primitives (fill_rounded_rect, draw_line, fill_circle,
+ * stroke_circle, draw_arc) have been consolidated into port-sw.h as shared
+ * inline functions: iui_raster_rounded_rect, iui_raster_line,
  * iui_raster_circle_fill, iui_raster_circle_stroke, iui_raster_arc
  */
 
@@ -180,8 +180,7 @@ static void headless_draw_line(float x0,
 
 #if HEADLESS_ENABLE_FRAMEBUFFER
     if (ctx->framebuffer)
-        iui_raster_line_bresenham(&ctx->raster, x0, y0, x1, y1, width,
-                                  srgb_color);
+        iui_raster_line(&ctx->raster, x0, y0, x1, y1, width, srgb_color);
 #else
     (void) x0;
     (void) y0;
@@ -307,11 +306,8 @@ static void headless_path_stroke(float width, uint32_t color, void *user)
         return;
     }
 
-    for (int i = 0; i < ctx->path.count - 1; i++) {
-        iui_raster_line_bresenham(
-            &ctx->raster, ctx->path.points_x[i], ctx->path.points_y[i],
-            ctx->path.points_x[i + 1], ctx->path.points_y[i + 1], width, color);
-    }
+    /* Use SDL2-compatible path stroke with round caps and consistent AA */
+    iui_raster_path_stroke(&ctx->raster, &ctx->path, width, color);
     iui_path_reset(&ctx->path);
 #else
     (void) width;

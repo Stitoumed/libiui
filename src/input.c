@@ -1130,6 +1130,132 @@ iui_textfield_result iui_textfield_with_selection(
     return result;
 }
 
+/* Toggle Widget Helper - shared logic for checkbox and radio */
+
+typedef void (*iui_toggle_draw_fn)(iui_context *ctx,
+                                   iui_rect_t widget_rect,
+                                   float corner,
+                                   bool is_focused,
+                                   bool is_active,
+                                   void *user_data);
+
+static void checkbox_draw(iui_context *ctx,
+                          iui_rect_t widget_rect,
+                          float corner,
+                          bool is_focused,
+                          bool is_active,
+                          void *user_data)
+{
+    (void) user_data;
+    if (is_active) {
+        uint32_t bg_color = ctx->colors.primary;
+        if (is_focused) {
+            uint32_t focus_layer =
+                iui_state_layer(ctx->colors.on_primary, IUI_STATE_FOCUS_ALPHA);
+            bg_color = iui_blend_color(bg_color, focus_layer);
+        }
+        ctx->renderer.draw_box(widget_rect, corner, bg_color,
+                               ctx->renderer.user);
+        float mark_margin = widget_rect.width * 0.25f;
+        ctx->renderer.draw_box(
+            (iui_rect_t) {widget_rect.x + mark_margin,
+                          widget_rect.y + mark_margin,
+                          widget_rect.width - mark_margin * 2,
+                          widget_rect.height - mark_margin * 2},
+            corner * 0.5f, ctx->colors.on_primary, ctx->renderer.user);
+    } else {
+        uint32_t bg_color = ctx->colors.surface_container;
+        if (is_focused) {
+            uint32_t focus_layer =
+                iui_state_layer(ctx->colors.primary, IUI_STATE_FOCUS_ALPHA);
+            bg_color = iui_blend_color(bg_color, focus_layer);
+        }
+        ctx->renderer.draw_box(widget_rect, corner, bg_color,
+                               ctx->renderer.user);
+    }
+}
+
+static void radio_draw(iui_context *ctx,
+                       iui_rect_t widget_rect,
+                       float corner,
+                       bool is_focused,
+                       bool is_active,
+                       void *user_data)
+{
+    (void) user_data;
+    uint32_t bg_color =
+        is_active ? ctx->colors.primary : ctx->colors.surface_container;
+    if (is_focused) {
+        uint32_t focus_layer = iui_state_layer(
+            is_active ? ctx->colors.on_primary : ctx->colors.primary,
+            IUI_STATE_FOCUS_ALPHA);
+        bg_color = iui_blend_color(bg_color, focus_layer);
+    }
+    ctx->renderer.draw_box(widget_rect, corner, bg_color, ctx->renderer.user);
+
+    if (is_active) {
+        float dot_size = widget_rect.width * 0.5f;
+        float dot_margin = (widget_rect.width - dot_size) * 0.5f;
+        ctx->renderer.draw_box(
+            (iui_rect_t) {widget_rect.x + dot_margin,
+                          widget_rect.y + dot_margin, dot_size, dot_size},
+            dot_size * 0.5f, ctx->colors.on_primary, ctx->renderer.user);
+    }
+}
+
+static bool toggle_base(iui_context *ctx,
+                        const char *label,
+                        iui_rect_t widget_rect,
+                        iui_rect_t hit_rect,
+                        float corner,
+                        void *value,
+                        int radio_value,
+                        bool is_radio,
+                        iui_toggle_draw_fn draw_fn,
+                        void *draw_user_data)
+{
+    uint32_t widget_id = iui_widget_id(label, widget_rect);
+    iui_register_focusable(ctx, widget_id, widget_rect, corner);
+    bool is_focused = iui_widget_is_focused(ctx, widget_id);
+
+    iui_state_t state = iui_get_component_state(ctx, hit_rect, false);
+    bool should_toggle = (state == IUI_STATE_PRESSED);
+    if (is_focused && (ctx->key_pressed == IUI_KEY_ENTER)) {
+        should_toggle = true;
+        ctx->key_pressed = IUI_KEY_NONE;
+    }
+
+    bool toggled = false;
+    bool is_active = false;
+
+    if (should_toggle) {
+        toggled = true;
+        if (is_radio) {
+            *(int *) value = radio_value;
+        } else {
+            *(bool *) value = !(*(bool *) value);
+        }
+    }
+
+    if (is_radio) {
+        is_active = (*(int *) value == radio_value);
+    } else {
+        is_active = *(bool *) value;
+    }
+
+    if (is_focused)
+        iui_draw_focus_ring(ctx, widget_rect, corner);
+
+    draw_fn(ctx, widget_rect, corner, is_focused, is_active, draw_user_data);
+
+    float text_x = widget_rect.x + widget_rect.width + ctx->padding;
+    float text_y = ctx->layout.y + (ctx->row_height - ctx->font_height) * 0.5f;
+    iui_internal_draw_text(ctx, text_x, text_y, label, ctx->colors.on_surface);
+
+    iui_newline(ctx);
+    return toggled;
+}
+
 /* Switch Widget */
 
 bool iui_switch(iui_context *ctx,
@@ -1286,12 +1412,6 @@ bool iui_checkbox(iui_context *ctx, const char *label, bool *checked)
     if (!ctx->current_window || !label)
         return false;
 
-    /* Modal blocking is handled centrally by iui_get_component_state() which
-     * returns IUI_STATE_DEFAULT when modal is active and rendering=false
-     */
-
-    bool toggled = false;
-
     float box_size = ctx->font_height;
     float corner = box_size * 0.15f;
     iui_rect_t box_rect = {
@@ -1308,63 +1428,8 @@ bool iui_checkbox(iui_context *ctx, const char *label, bool *checked)
         .height = ctx->row_height,
     };
 
-    /* Register as focusable widget for keyboard navigation.
-     * Combine label hash with position to avoid ID collision.
-     */
-    uint32_t widget_id = iui_widget_id(label, box_rect);
-    iui_register_focusable(ctx, widget_id, box_rect, corner);
-    bool is_focused = iui_widget_is_focused(ctx, widget_id);
-
-    /* Toggle on click or keyboard activation */
-    iui_state_t state = iui_get_component_state(ctx, hit_rect, false);
-    bool should_toggle = (state == IUI_STATE_PRESSED);
-    if (is_focused && (ctx->key_pressed == IUI_KEY_ENTER)) {
-        should_toggle = true;
-        ctx->key_pressed = IUI_KEY_NONE;
-    }
-    if (should_toggle) {
-        *checked = !(*checked);
-        toggled = true;
-    }
-
-    /* Draw focus ring when focused */
-    if (is_focused)
-        iui_draw_focus_ring(ctx, box_rect, corner);
-
-    if (*checked) {
-        /* Checked: filled box with primary, inner mark with on_primary */
-        uint32_t bg_color = ctx->colors.primary;
-        if (is_focused) {
-            uint32_t focus_layer =
-                iui_state_layer(ctx->colors.on_primary, IUI_STATE_FOCUS_ALPHA);
-            bg_color = iui_blend_color(bg_color, focus_layer);
-        }
-        ctx->renderer.draw_box(box_rect, corner, bg_color, ctx->renderer.user);
-        /* Checkmark (simplified as smaller inner square) */
-        float mark_margin = box_size * 0.25f;
-        ctx->renderer.draw_box(
-            (iui_rect_t) {box_rect.x + mark_margin, box_rect.y + mark_margin,
-                          box_size - mark_margin * 2,
-                          box_size - mark_margin * 2},
-            corner * 0.5f, ctx->colors.on_primary, ctx->renderer.user);
-    } else {
-        /* Unchecked: surface_variant background */
-        uint32_t bg_color = ctx->colors.surface_container;
-        if (is_focused) {
-            uint32_t focus_layer =
-                iui_state_layer(ctx->colors.primary, IUI_STATE_FOCUS_ALPHA);
-            bg_color = iui_blend_color(bg_color, focus_layer);
-        }
-        ctx->renderer.draw_box(box_rect, corner, bg_color, ctx->renderer.user);
-    }
-
-    /* Draw label */
-    float text_x = box_rect.x + box_size + ctx->padding;
-    float text_y = ctx->layout.y + (ctx->row_height - ctx->font_height) * 0.5f;
-    iui_internal_draw_text(ctx, text_x, text_y, label, ctx->colors.on_surface);
-
-    iui_newline(ctx);
-    return toggled;
+    return toggle_base(ctx, label, box_rect, hit_rect, corner, checked, 0,
+                       false, checkbox_draw, NULL);
 }
 
 bool iui_radio(iui_context *ctx,
@@ -1374,7 +1439,6 @@ bool iui_radio(iui_context *ctx,
 {
     if (!ctx->current_window || !label)
         return false;
-    bool selected = false;
 
     float circle_size = ctx->font_height;
     float corner = circle_size * 0.5f; /* Full circle */
@@ -1392,58 +1456,8 @@ bool iui_radio(iui_context *ctx,
         .height = ctx->row_height,
     };
 
-    /* Register as focusable widget for keyboard navigation.
-     * Combine label hash with position to avoid ID collision. */
-    uint32_t widget_id = iui_widget_id(label, circle_rect);
-    iui_register_focusable(ctx, widget_id, circle_rect, corner);
-    bool is_focused = iui_widget_is_focused(ctx, widget_id);
-
-    /* Select on click or keyboard activation */
-    iui_state_t state = iui_get_component_state(ctx, hit_rect, false);
-    bool should_select = (state == IUI_STATE_PRESSED);
-    if (is_focused && (ctx->key_pressed == IUI_KEY_ENTER)) {
-        should_select = true;
-        ctx->key_pressed = IUI_KEY_NONE;
-    }
-    if (should_select) {
-        *group_value = button_value;
-        selected = true;
-    }
-
-    bool is_selected = (*group_value == button_value);
-
-    /* Draw focus ring when focused */
-    if (is_focused)
-        iui_draw_focus_ring(ctx, circle_rect, corner);
-
-    /* Outer circle background with focus state layer */
-    uint32_t bg_color =
-        is_selected ? ctx->colors.primary : ctx->colors.surface_container;
-    if (is_focused) {
-        uint32_t focus_layer = iui_state_layer(
-            is_selected ? ctx->colors.on_primary : ctx->colors.primary,
-            IUI_STATE_FOCUS_ALPHA);
-        bg_color = iui_blend_color(bg_color, focus_layer);
-    }
-    ctx->renderer.draw_box(circle_rect, corner, bg_color, ctx->renderer.user);
-
-    /* Draw inner dot if selected */
-    if (is_selected) {
-        float dot_size = circle_size * 0.5f;
-        float dot_margin = (circle_size - dot_size) * 0.5f;
-        ctx->renderer.draw_box(
-            (iui_rect_t) {circle_rect.x + dot_margin,
-                          circle_rect.y + dot_margin, dot_size, dot_size},
-            dot_size * 0.5f, ctx->colors.on_primary, ctx->renderer.user);
-    }
-
-    /* Draw label */
-    float text_x = circle_rect.x + circle_size + ctx->padding;
-    float text_y = ctx->layout.y + (ctx->row_height - ctx->font_height) * 0.5f;
-    iui_internal_draw_text(ctx, text_x, text_y, label, ctx->colors.on_surface);
-
-    iui_newline(ctx);
-    return selected;
+    return toggle_base(ctx, label, circle_rect, hit_rect, corner, group_value,
+                       button_value, true, radio_draw, NULL);
 }
 
 /* Exposed Dropdown Menu Implementation
@@ -1463,10 +1477,14 @@ bool iui_dropdown(iui_context *ctx, const iui_dropdown_options *options)
     int selected = *options->selected_index;
 
     /* Clamp selected index to valid range */
-    if (selected < 0)
+    if (selected < 0) {
         selected = 0;
-    if (selected >= options->option_count)
+        *options->selected_index = selected;
+    }
+    if (selected >= options->option_count) {
         selected = options->option_count - 1;
+        *options->selected_index = selected;
+    }
 
     /* Calculate dropdown field rect */
     float field_h = IUI_DROPDOWN_HEIGHT;
